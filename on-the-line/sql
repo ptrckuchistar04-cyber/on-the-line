@@ -1,0 +1,190 @@
+-- Create the database
+CREATE DATABASE IF NOT EXISTS on_the_line_db CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+USE on_the_line_db;
+
+-- Users table
+CREATE TABLE IF NOT EXISTS users (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    full_name VARCHAR(100) NOT NULL,
+    email VARCHAR(100) UNIQUE NOT NULL,
+    password_hash VARCHAR(255) NOT NULL,
+    role ENUM('customer', 'administrator') DEFAULT 'customer',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_email (email),
+    INDEX idx_role (role)
+) ENGINE=InnoDB;
+
+-- Products table
+CREATE TABLE IF NOT EXISTS products (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    admin_id INT NOT NULL,
+    product_type ENUM('real_estate', 'vehicle') NOT NULL,
+    title VARCHAR(150) NOT NULL,
+    description TEXT,
+    price DECIMAL(12, 2) NOT NULL,
+    reservation_fee DECIMAL(10, 2) NOT NULL,
+    main_image VARCHAR(255),
+    status ENUM('available', 'reserved', 'sold') DEFAULT 'available',
+    is_bundle TINYINT(1) DEFAULT 0,
+    bundle_pair_id INT DEFAULT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (admin_id) REFERENCES users(id) ON DELETE CASCADE,
+    INDEX idx_product_type (product_type),
+    INDEX idx_status (status),
+    INDEX idx_bundle (is_bundle)
+) ENGINE=InnoDB;
+
+-- Real estate details
+CREATE TABLE IF NOT EXISTS real_estate_details (
+    product_id INT PRIMARY KEY,
+    property_type ENUM('house', 'condo', 'townhouse', 'land') NOT NULL,
+    square_meters DECIMAL(8, 2) NOT NULL,
+    bedrooms INT DEFAULT 0,
+    bathrooms INT DEFAULT 0,
+    amenities TEXT,
+    year_built YEAR,
+    FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+-- Vehicle details
+CREATE TABLE IF NOT EXISTS vehicle_details (
+    product_id INT PRIMARY KEY,
+    make VARCHAR(50) NOT NULL,
+    model VARCHAR(50) NOT NULL,
+    year YEAR NOT NULL,
+    mileage INT UNSIGNED NOT NULL,
+    transmission ENUM('automatic', 'manual', 'cvt'),
+    fuel_type VARCHAR(30),
+    modifications TEXT,
+    vin VARCHAR(17) UNIQUE,
+    FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+-- Product images
+CREATE TABLE IF NOT EXISTS product_images (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    product_id INT NOT NULL,
+    image_url VARCHAR(255) NOT NULL,
+    sort_order INT DEFAULT 0,
+    FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+-- Reservation carts
+CREATE TABLE IF NOT EXISTS reservation_carts (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    user_id INT NOT NULL,
+    product_id INT NOT NULL,
+    quantity TINYINT(1) DEFAULT 1,
+    added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE,
+    UNIQUE KEY unique_user_product (user_id, product_id)
+) ENGINE=InnoDB;
+
+-- Orders
+CREATE TABLE IF NOT EXISTS orders (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    user_id INT NOT NULL,
+    order_number VARCHAR(20) UNIQUE NOT NULL,
+    total_reservation_fee DECIMAL(10, 2) NOT NULL,
+    status ENUM('pending', 'paid', 'processing', 'completed', 'cancelled') DEFAULT 'pending',
+    xendit_invoice_id VARCHAR(100),
+    xendit_payment_url VARCHAR(500),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    INDEX idx_order_status (status),
+    INDEX idx_xendit_invoice (xendit_invoice_id)
+) ENGINE=InnoDB;
+
+-- Order items
+CREATE TABLE IF NOT EXISTS order_items (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    order_id INT NOT NULL,
+    product_id INT NOT NULL,
+    reservation_fee DECIMAL(10, 2) NOT NULL,
+    FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE,
+    FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+-- Payment logs
+CREATE TABLE IF NOT EXISTS payment_logs (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    order_id INT,
+    invoice_id VARCHAR(100),
+    status VARCHAR(50),
+    payload TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE SET NULL
+) ENGINE=InnoDB;
+
+-- Insert admin user (password: admin123)
+INSERT INTO users (full_name, email, password_hash, role) 
+VALUES ('Admin User', 'admin@ontheline.com', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'administrator');
+
+-- Insert customer user (password: customer123)
+INSERT INTO users (full_name, email, password_hash, role) 
+VALUES ('John Doe', 'customer@example.com', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'customer');
+
+-- Insert sample real estate products
+INSERT INTO products (admin_id, product_type, title, description, price, reservation_fee, status) VALUES 
+(1, 'real_estate', 'Modern Family Home in Makati', 'Beautiful 3-bedroom family home in the heart of Makati. Recently renovated with modern finishes.', 8500000.00, 50000.00, 'available');
+SET @pid = LAST_INSERT_ID();
+INSERT INTO real_estate_details (product_id, property_type, square_meters, bedrooms, bathrooms, amenities, year_built) 
+VALUES (@pid, 'house', 180.50, 3, 2, 'Swimming Pool, Garden, 2-Car Garage', 2020);
+
+INSERT INTO products (admin_id, product_type, title, description, price, reservation_fee, status) VALUES 
+(1, 'real_estate', 'Luxury Condo in BGC', 'Premium 2-bedroom condo unit with stunning city views.', 12000000.00, 75000.00, 'available');
+SET @pid = LAST_INSERT_ID();
+INSERT INTO real_estate_details (product_id, property_type, square_meters, bedrooms, bathrooms, amenities, year_built) 
+VALUES (@pid, 'condo', 95.00, 2, 2, 'Gym, Infinity Pool, 24/7 Security', 2022);
+
+INSERT INTO products (admin_id, product_type, title, description, price, reservation_fee, status) VALUES 
+(1, 'real_estate', 'Townhouse in Quezon City', 'Spacious 4-bedroom townhouse perfect for growing families.', 6500000.00, 35000.00, 'available');
+SET @pid = LAST_INSERT_ID();
+INSERT INTO real_estate_details (product_id, property_type, square_meters, bedrooms, bathrooms, amenities, year_built) 
+VALUES (@pid, 'townhouse', 150.00, 4, 3, 'Gated Community, Playground, Parking', 2019);
+
+INSERT INTO products (admin_id, product_type, title, description, price, reservation_fee, status) VALUES 
+(1, 'real_estate', 'Vacant Lot in Tagaytay', 'Prime vacant lot with panoramic views of Taal Volcano.', 3500000.00, 25000.00, 'available');
+SET @pid = LAST_INSERT_ID();
+INSERT INTO real_estate_details (product_id, property_type, square_meters, bedrooms, bathrooms, amenities, year_built) 
+VALUES (@pid, 'land', 300.00, 0, 0, 'Mountain View, Near Highway, Gated', NULL);
+
+INSERT INTO products (admin_id, product_type, title, description, price, reservation_fee, status) VALUES 
+(1, 'real_estate', 'Beach House in Batangas', 'Stunning beachfront property with private access to white sand beach.', 15000000.00, 100000.00, 'available');
+SET @pid = LAST_INSERT_ID();
+INSERT INTO real_estate_details (product_id, property_type, square_meters, bedrooms, bathrooms, amenities, year_built) 
+VALUES (@pid, 'house', 200.00, 4, 3, 'Beach Access, Veranda, Outdoor Kitchen', 2021);
+
+-- Insert sample vehicle products
+INSERT INTO products (admin_id, product_type, title, description, price, reservation_fee, status) VALUES 
+(1, 'vehicle', '2023 Toyota Fortuner LTD', 'Like-new Toyota Fortuner with low mileage. Full service records available.', 1850000.00, 15000.00, 'available');
+SET @pid = LAST_INSERT_ID();
+INSERT INTO vehicle_details (product_id, make, model, year, mileage, transmission, fuel_type, modifications, vin) 
+VALUES (@pid, 'Toyota', 'Fortuner', 2023, 15000, 'automatic', 'Diesel', 'All stock, premium tint', 'MHFZX80G000123456');
+
+INSERT INTO products (admin_id, product_type, title, description, price, reservation_fee, status) VALUES 
+(1, 'vehicle', '2022 Honda Civic RS Turbo', 'Sporty Civic RS in excellent condition. Complete with Honda sensing features.', 1350000.00, 12000.00, 'available');
+SET @pid = LAST_INSERT_ID();
+INSERT INTO vehicle_details (product_id, make, model, year, mileage, transmission, fuel_type, modifications, vin) 
+VALUES (@pid, 'Honda', 'Civic', 2022, 25000, 'automatic', 'Gasoline', 'Ceramic coating, modulo kit', 'FD23456789012');
+
+INSERT INTO products (admin_id, product_type, title, description, price, reservation_fee, status) VALUES 
+(1, 'vehicle', '2020 Mitsubishi Montero Sport', 'Well-maintained Montero Sport with comprehensive insurance.', 1250000.00, 10000.00, 'available');
+SET @pid = LAST_INSERT_ID();
+INSERT INTO vehicle_details (product_id, make, model, year, mileage, transmission, fuel_type, modifications, vin) 
+VALUES (@pid, 'Mitsubishi', 'Montero Sport', 2020, 45000, 'automatic', 'Diesel', 'Upgraded sound system', 'MMBJRKH100345678');
+
+INSERT INTO products (admin_id, product_type, title, description, price, reservation_fee, status) VALUES 
+(1, 'vehicle', '2023 Ford Ranger Raptor', 'Powerful Ranger Raptor with off-road package.', 2150000.00, 20000.00, 'available');
+SET @pid = LAST_INSERT_ID();
+INSERT INTO vehicle_details (product_id, make, model, year, mileage, transmission, fuel_type, modifications, vin) 
+VALUES (@pid, 'Ford', 'Ranger', 2023, 8000, 'automatic', 'Diesel', 'Roll bar, bed liner', 'RAP1234567890');
+
+INSERT INTO products (admin_id, product_type, title, description, price, reservation_fee, status) VALUES 
+(1, 'vehicle', '2021 Suzuki Jimny GLX', 'Fun and capable mini SUV. Perfect for city driving.', 950000.00, 8000.00, 'available');
+SET @pid = LAST_INSERT_ID();
+INSERT INTO vehicle_details (product_id, make, model, year, mileage, transmission, fuel_type, modifications, vin) 
+VALUES (@pid, 'Suzuki', 'Jimny', 2021, 30000, 'automatic', 'Gasoline', 'Lifted suspension, roof rack', 'JIMNY2021000987');
